@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
+using Microsoft.Extensions.Logging;
 
 namespace MtlsWebApi;
 
@@ -38,6 +39,68 @@ internal static class CryptoUtilities
             DerData = crlData,
             NextUpdate = nextUpdate
         };
+    }
+
+    /// <summary>
+    /// Verifies a CRL signature against its issuer certificate using CryptVerifyCertificateSignatureEx.
+    /// </summary>
+    /// <param name="crlData">The DER-encoded CRL data</param>
+    /// <param name="issuerCert">The issuer certificate</param>
+    /// <param name="logger">Optional logger for diagnostics</param>
+    /// <returns>True if the CRL signature is valid, false otherwise</returns>
+    internal static bool VerifyCrlSignatureAgainstIssuer(byte[] crlData, X509Certificate2 issuerCert, ILogger? logger = null)
+    {
+        if (crlData == null || crlData.Length == 0 || issuerCert == null)
+        {
+            logger?.LogWarning("VerifyCrlSignatureAgainstIssuer: Invalid input parameters");
+            return false;
+        }
+
+        try
+        {
+            using var crlContext = SafeCrlContext.Create(crlData);
+            if (crlContext.IsInvalid)
+            {
+                logger?.LogWarning("VerifyCrlSignatureAgainstIssuer: Could not create CRL context");
+                return false;
+            }
+
+            // Get the certificate context pointer from the X509Certificate2
+            var issuerContextPtr = issuerCert.Handle;
+            if (issuerContextPtr == IntPtr.Zero)
+            {
+                logger?.LogWarning("VerifyCrlSignatureAgainstIssuer: Invalid issuer certificate handle");
+                return false;
+            }
+
+            bool result = CryptoInterop.CryptVerifyCertificateSignatureEx(
+                IntPtr.Zero, // Use default cryptographic provider
+                CryptoInterop.X509_ASN_ENCODING | CryptoInterop.PKCS_7_ASN_ENCODING,
+                CryptoInterop.CRYPT_VERIFY_CERT_SIGN_SUBJECT_CRL,
+                crlContext.DangerousGetHandle(),
+                CryptoInterop.CRYPT_VERIFY_CERT_SIGN_ISSUER_CERT,
+                issuerContextPtr, // This should work as X509Certificate2.Handle returns PCCERT_CONTEXT
+                0, // No flags
+                IntPtr.Zero // Reserved
+            );
+
+            if (result)
+            {
+                logger?.LogDebug("VerifyCrlSignatureAgainstIssuer: CRL signature verified successfully");
+            }
+            else
+            {
+                var error = Marshal.GetLastWin32Error();
+                logger?.LogWarning("VerifyCrlSignatureAgainstIssuer: CRL signature verification failed with error {Error}", error);
+            }
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            logger?.LogError(ex, "VerifyCrlSignatureAgainstIssuer: Exception during CRL signature verification");
+            return false;
+        }
     }
 }
 

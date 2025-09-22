@@ -14,6 +14,10 @@ internal static partial class CryptoInterop
     internal const uint CERT_STORE_ADD_REPLACE_EXISTING = 3;
     internal const uint CERT_STORE_CTRL_RESYNC = 1;
 
+    // CryptVerifyCertificateSignatureEx constants
+    internal const uint CRYPT_VERIFY_CERT_SIGN_SUBJECT_CRL = 3;
+    internal const uint CRYPT_VERIFY_CERT_SIGN_ISSUER_CERT = 2;
+
     #endregion
 
     #region Structures
@@ -66,6 +70,16 @@ internal static partial class CryptoInterop
         public uint dwHighDateTime;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct CERT_CONTEXT
+    {
+        public uint dwCertEncodingType;
+        public IntPtr pbCertEncoded;
+        public uint cbCertEncoded;
+        public IntPtr pCertInfo;
+        public IntPtr hCertStore;
+    }
+
     #endregion
 
     #region P/Invoke Methods
@@ -107,6 +121,18 @@ internal static partial class CryptoInterop
 
     [LibraryImport("crypt32.dll", SetLastError = true)]
     internal static partial IntPtr CertDuplicateCRLContext(IntPtr pCrlContext);
+
+    [LibraryImport("crypt32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool CryptVerifyCertificateSignatureEx(
+        IntPtr hCryptProv,
+        uint dwCertEncodingType,
+        uint dwSubjectType,
+        IntPtr pvSubject,
+        uint dwIssuerType,
+        IntPtr pvIssuer,
+        uint dwFlags,
+        IntPtr pvReserved);
 
     #endregion
 }
